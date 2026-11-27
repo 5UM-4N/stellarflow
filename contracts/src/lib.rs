@@ -5,6 +5,7 @@ mod errors;
 use crate::templates::{StreamTemplate, TemplateCreated};
 use errors::ContractError;
 pub mod dao;
+pub mod peg_bridge;
 pub mod router;
 pub mod templates;
 use soroban_sdk::{
@@ -90,6 +91,25 @@ pub mod escrow {
 
 const NATIVE_SENTINEL: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
 const MAX_TEMPLATES_PER_SENDER: u32 = 10;
+
+pub const INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
+pub const INSTANCE_BUMP_AMOUNT: u32 = 518_400;
+pub const PERSISTENT_LIFETIME_THRESHOLD: u32 = 17_280;
+pub const PERSISTENT_BUMP_AMOUNT: u32 = 518_400;
+
+fn bump_instance(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(INSTANCE_LIFETIME_THRESHOLD, INSTANCE_BUMP_AMOUNT);
+}
+
+fn bump_persistent(env: &Env, key: &DataKey) {
+    env.storage().persistent().extend_ttl(
+        key,
+        PERSISTENT_LIFETIME_THRESHOLD,
+        PERSISTENT_BUMP_AMOUNT,
+    );
+}
 
 // ---------------------------------------------------------------------------
 // Upgrade compatibility — layout version
@@ -390,6 +410,7 @@ impl StellarStreamContract {
         env.storage()
             .instance()
             .set(&DataKey::ContractVersion, &STREAM_LAYOUT_VERSION);
+        bump_instance(&env);
     }
 
     /// Returns the `STREAM_LAYOUT_VERSION` that was active when `initialize`
@@ -927,6 +948,7 @@ impl StellarStreamContract {
         env.storage()
             .persistent()
             .set(&DataKey::Stream(stream_id), &stream);
+        bump_persistent(&env, &DataKey::Stream(stream_id));
 
         let new_claimed_total = stream.claimed_amount;
 
@@ -1372,9 +1394,11 @@ fn create_stream_with_config(
     env.storage()
         .persistent()
         .set(&DataKey::NextStreamId, &next_id);
+    bump_persistent(env, &DataKey::NextStreamId);
     env.storage()
         .persistent()
         .set(&DataKey::Stream(next_id), &stream);
+    bump_persistent(env, &DataKey::Stream(next_id));
 
     let now = env.ledger().timestamp();
     env.events().publish(
@@ -1545,3 +1569,6 @@ mod claimable_events_test;
 
 #[cfg(test)]
 mod router_test;
+
+#[cfg(test)]
+mod peg_bridge_test;

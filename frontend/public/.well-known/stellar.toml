@@ -50,3 +50,16 @@ NATIVE=true
 DISPLAY_DECIMALS=7
 NAME="Lumen"
 DESC="Native asset of the Stellar network."
+
+[[CURRENCIES]]
+CODE="STX"
+ISSUER="GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+STATUS="testnet"
+DISPLAY_DECIMALS=7
+NAME="Pegged STX (BNB Smart Chain 1:1 Bridge)"
+DESC="1:1 BNB Chain (BEP-20) pegged STX bridged via Custom Stellar Asset Contract (SAC) Admin with locked classic issuer (masterWeight=0) for continuous streaming on StellarFlow."
+IS_ASSET_ANCHORED=true
+ANCHOR_ASSET_TYPE="crypto"
+ANCHOR_ASSET="STX"
+REDEMPTION_INSTRUCTIONS="Burn 7-decimal SAC STX via PegBridgeContract::burn_for_bnb_redemption to unlock 1:1 18-decimal BEP-20 STX on BNB Smart Chain (EID 30102)."
+

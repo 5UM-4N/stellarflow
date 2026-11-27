@@ -236,8 +236,8 @@ records the new version by calling `set_contract_version()`.
 
 | Method | Parameters | Returns | Description |
 |:---|:---|:---:|:---|
-| `initialize` | `admin: Address, default_stream_contract: Address` | `()` | One-time initialization of router instance keys. |
+| `initialize_router` | `admin: Address, default_stream_contract: Address` | `()` | One-time initialization of router instance keys (namespaced to avoid symbol collision in shared cdylib). |
 | `batch_create_streams` | `sender: Address, stream_contract: Address, streams: Vec<BatchStreamParam>` | `Vec<u64>` | Atomically executes multiple stream creations via cross-contract calls to `StreamEscrowClient`. |
-| `split_claim` | `stream_contract: Address, stream_id: u64, recipient: Address, token: Address, allocations: Vec<SplitAllocation>` | `i128` | Claims vested tokens and distributes them across recipient destinations according to basis points. |
-| `get_stats` | `()` | `RouterStats` | Returns global router routing metrics and volume counters. |
+| `split_claim` | `stream_contract: Address, stream_id: u64, recipient: Address, token: Address, allocations: Vec<SplitAllocation>` | `i128` | Queries `claimable`, claims vested tokens via 3-arg `claim`, and distributes them across recipient destinations according to basis points. |
+| `get_router_stats` | `()` | `RouterStats` | Returns global router routing metrics and volume counters. |
 

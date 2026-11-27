@@ -5,7 +5,7 @@
 
 use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, token::Client as TokenClient, Address, Env,
-    String, Symbol, Vec,
+    Vec,
 };
 
 // ---------------------------------------------------------------------------
@@ -50,10 +50,12 @@ pub enum RouterDataKey {
 // ---------------------------------------------------------------------------
 
 mod stream_interface {
-    use soroban_sdk::{contractclient, Address, Env, Map, String, Vec};
+    use soroban_sdk::{contractclient, Address, Env, Map, String};
 
     #[contractclient(name = "StreamEscrowClient")]
+    #[allow(dead_code)]
     pub trait StreamEscrowInterface {
+        #[allow(clippy::too_many_arguments)]
         fn create_stream(
             env: Env,
             sender: Address,
@@ -66,11 +68,23 @@ mod stream_interface {
             metadata: Option<Map<String, String>>,
         ) -> u64;
 
-        fn claim(env: Env, stream_id: u64, recipient: Address) -> i128;
+        fn claimable(env: Env, stream_id: u64, at_time: u64) -> i128;
+
+        fn claim(env: Env, stream_id: u64, recipient: Address, amount: i128) -> i128;
     }
 }
 
 use stream_interface::StreamEscrowClient;
+
+const ROUTER_INSTANCE_LIFETIME_THRESHOLD: u32 = 17_280;
+const ROUTER_INSTANCE_BUMP_AMOUNT: u32 = 518_400;
+
+fn bump_router_instance(env: &Env) {
+    env.storage().instance().extend_ttl(
+        ROUTER_INSTANCE_LIFETIME_THRESHOLD,
+        ROUTER_INSTANCE_BUMP_AMOUNT,
+    );
+}
 
 // ---------------------------------------------------------------------------
 // StreamRouter Contract Implementation
@@ -82,16 +96,19 @@ pub struct StreamRouterContract;
 #[contractimpl]
 impl StreamRouterContract {
     /// Initialize the router with an admin and default stream escrow contract address.
-    pub fn initialize(env: Env, admin: Address, default_stream_contract: Address) {
+    /// Namespaced as `initialize_router` so its WASM export does not collide with
+    /// `StellarStreamContract::initialize` in the shared cdylib build.
+    pub fn initialize_router(env: Env, admin: Address, default_stream_contract: Address) {
         if env.storage().instance().has(&RouterDataKey::Admin) {
             panic!("router already initialized");
         }
         admin.require_auth();
 
         env.storage().instance().set(&RouterDataKey::Admin, &admin);
-        env.storage()
-            .instance()
-            .set(&RouterDataKey::DefaultStreamContract, &default_stream_contract);
+        env.storage().instance().set(
+            &RouterDataKey::DefaultStreamContract,
+            &default_stream_contract,
+        );
 
         let initial_stats = RouterStats {
             total_batches_routed: 0,
@@ -101,6 +118,7 @@ impl StreamRouterContract {
         env.storage()
             .instance()
             .set(&RouterDataKey::Stats, &initial_stats);
+        bump_router_instance(&env);
     }
 
     /// Atomically creates multiple streams via cross-contract calls to StellarStreamContract.
@@ -165,6 +183,7 @@ impl StreamRouterContract {
         stats.total_volume_routed = stats.total_volume_routed.saturating_add(batch_volume);
 
         env.storage().instance().set(&RouterDataKey::Stats, &stats);
+        bump_router_instance(&env);
 
         // Emit Soroban event for indexer cursor synchronization
         env.events().publish(
@@ -195,22 +214,29 @@ impl StreamRouterContract {
         let mut total_bps: u32 = 0;
         for i in 0..alloc_len {
             let alloc = allocations.get(i).unwrap();
-            total_bps = total_bps.checked_add(alloc.basis_points).expect("bps overflow");
+            total_bps = total_bps
+                .checked_add(alloc.basis_points)
+                .expect("bps overflow");
         }
         if total_bps != 10_000 {
             panic!("allocations must sum to 10,000 bps");
         }
 
-        // Execute cross-contract claim against stream escrow
+        // Execute cross-contract claimable lookup and 3-arg claim against stream escrow
         let escrow_client = StreamEscrowClient::new(&env, &stream_contract);
-        let claimed_amount = escrow_client.claim(&stream_id, &env.current_contract_address());
+        let this_contract = env.current_contract_address();
+        let now = env.ledger().timestamp();
+        let claimable_now = escrow_client.claimable(&stream_id, &now);
+        if claimable_now <= 0 {
+            return 0;
+        }
 
+        let claimed_amount = escrow_client.claim(&stream_id, &this_contract, &claimable_now);
         if claimed_amount <= 0 {
             return 0;
         }
 
         let token_client = TokenClient::new(&env, &token);
-        let this_contract = env.current_contract_address();
 
         let mut distributed_total: i128 = 0;
         for i in 0..alloc_len {
@@ -228,6 +254,8 @@ impl StreamRouterContract {
             }
         }
 
+        bump_router_instance(&env);
+
         env.events().publish(
             (symbol_short!("SplitDone"), recipient),
             (stream_id, claimed_amount),
@@ -237,7 +265,7 @@ impl StreamRouterContract {
     }
 
     /// Query global statistics of the StreamRouter
-    pub fn get_stats(env: Env) -> RouterStats {
+    pub fn get_router_stats(env: Env) -> RouterStats {
         env.storage()
             .instance()
             .get(&RouterDataKey::Stats)

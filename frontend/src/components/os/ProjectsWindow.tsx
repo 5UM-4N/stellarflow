@@ -38,7 +38,7 @@ export function ProjectsWindow({
       image: "/assets/card-vesting-engine.svg",
       demoLabel: "run vesting test →",
       onDemo: onOpenTerminal,
-      githubUrl: "https://github.com/Steller-escaprt/stellarflow/tree/main/contracts/stream_escrow",
+      githubUrl: "https://github.com/Steller-escaprt/stellarflow/tree/main/contracts/src",
     },
     {
       id: "soroban-core",

@@ -292,7 +292,7 @@ To ensure institutional stability, StellarFlow enforces a strict regression prev
 | **BLD-02: Dependency Peer Resolution** | Storybook 10 peer conflict on Vite 8 & React 18 | Removed legacy Storybook devDependencies; aligned `@types/react-dom` to v18; added `--legacy-peer-deps` | `package.json` verification & clean `npm run build` CI gate |
 | **UI-03: React Hook Ordering Violation** | `useMemo` declared after conditional return in `CliffMarker.tsx` | Moved date formatting `useMemo` above conditional guard | `frontend/src/components/CliffMarker.test.tsx` |
 | **NET-04: Theme Deserialization Blank Screen** | Uncaught `localStorage` access on restricted browsers | Implemented `try/catch` fallback in `useTheme` defaulting safely to system dark | `frontend/src/hooks/useTheme.test.ts` |
-| **STX-05: State Archival / TTL Risk** | Soroban instance storage expiration on inactive streams | Added automated `extend_ttl` calls in smart contract state transitions | `contracts/stream_escrow/src/test.rs` (TTL extension test) |
+| **STX-05: State Archival / TTL Risk** | Soroban persistent & instance storage expiration on long-lived streams | Added automated `extend_ttl` calls (`INSTANCE_BUMP_AMOUNT`, `PERSISTENT_BUMP_AMOUNT`) in smart contract state transitions | `contracts/src/test.rs` & `contracts/src/router_test.rs` |
 
 ---
 

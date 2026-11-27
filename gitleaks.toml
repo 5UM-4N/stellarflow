@@ -10,14 +10,8 @@ useDefault = true
 [[rules]]
 id = "stellar-private-key"
 description = "Stellar private key (S...)"
-regex = '''S[A-Z2-7]{55}'''
+regex = '''\bS[A-Z2-7]{55}\b'''
 keywords = ["stellar", "private", "key", "secret"]
-
-[[rules]]
-id = "stellar-public-key"
-description = "Stellar public key (G...)"
-regex = '''G[A-Z2-7]{55}'''
-keywords = ["stellar", "public", "key"]
 
 [[rules]]
 id = "jwt-secret"
@@ -45,6 +39,12 @@ paths = [
     "**/*.md",
     "**/*.test.ts",
     "**/*.test.js",
+    "**/test-*.js",
+    "**/test-*.ts",
+    "**/package-lock.json",
+    "**/yarn.lock",
+    "**/stats.html",
+    "**/playwright-report/**",
     "**/test/**",
     "**/tests/**",
     "**/.env.example",

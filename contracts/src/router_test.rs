@@ -4,8 +4,7 @@ extern crate std;
 
 use super::*;
 use crate::router::{
-    BatchStreamParam, RouterStats, SplitAllocation, StreamRouterContract,
-    StreamRouterContractClient,
+    BatchStreamParam, SplitAllocation, StreamRouterContract, StreamRouterContractClient,
 };
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
@@ -22,9 +21,9 @@ fn test_router_initialization() {
     let router_client = StreamRouterContractClient::new(&env, &router_contract);
 
     let admin = Address::generate(&env);
-    router_client.initialize(&admin, &stream_contract);
+    router_client.initialize_router(&admin, &stream_contract);
 
-    let stats = router_client.get_stats();
+    let stats = router_client.get_router_stats();
     assert_eq!(stats.total_batches_routed, 0);
     assert_eq!(stats.total_streams_routed, 0);
     assert_eq!(stats.total_volume_routed, 0);
@@ -41,11 +40,13 @@ fn test_cross_contract_batch_creation() {
     let router_client = StreamRouterContractClient::new(&env, &router_contract);
 
     let admin = Address::generate(&env);
-    router_client.initialize(&admin, &stream_contract);
+    router_client.initialize_router(&admin, &stream_contract);
 
     // 2. Setup token and sender balance
     let token_admin = Address::generate(&env);
-    let token = env.register_stellar_asset_contract_v2(token_admin).address();
+    let token = env
+        .register_stellar_asset_contract_v2(token_admin)
+        .address();
     let sender = Address::generate(&env);
 
     let total_deposit = 300_000_0000000i128; // 30,000 tokens
@@ -84,7 +85,7 @@ fn test_cross_contract_batch_creation() {
     assert_eq!(stream_ids.len(), 3);
 
     // 5. Verify stats updated
-    let stats = router_client.get_stats();
+    let stats = router_client.get_router_stats();
     assert_eq!(stats.total_batches_routed, 1);
     assert_eq!(stats.total_streams_routed, 3);
     assert_eq!(stats.total_volume_routed, 300_000_0000000i128);
@@ -97,30 +98,60 @@ fn test_cross_contract_batch_creation() {
 }
 
 #[test]
-fn test_split_claim_validation() {
+fn test_split_claim_end_to_end() {
     let env = Env::default();
     env.mock_all_auths();
 
     let stream_contract = env.register_contract(None, StellarStreamContract);
     let router_contract = env.register_contract(None, StreamRouterContract);
+    let stream_client = StellarStreamContractClient::new(&env, &stream_contract);
     let router_client = StreamRouterContractClient::new(&env, &router_contract);
 
     let admin = Address::generate(&env);
-    router_client.initialize(&admin, &stream_contract);
+    router_client.initialize_router(&admin, &stream_contract);
 
-    let dest_a = Address::generate(&env);
-    let dest_b = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token = env
+        .register_stellar_asset_contract_v2(token_admin)
+        .address();
+    let sender = Address::generate(&env);
+    let worker = Address::generate(&env);
 
-    // Allocations sum to 10,000 bps (80% + 20%)
+    let total_deposit = 100_000_0000000i128; // 10,000 tokens
+    token::StellarAssetClient::new(&env, &token).mint(&sender, &total_deposit);
+
+    // Create stream vesting to router_contract over [0, 10_000]
+    let stream_id = stream_client.create_stream(
+        &sender,
+        &router_contract,
+        &token,
+        &total_deposit,
+        &0,
+        &10_000,
+        &0,
+        &None,
+    );
+
+    // Advance ledger to 50% vested (5,000s -> 50,000_0000000 claimable)
+    env.ledger().with_mut(|l| l.timestamp = 5_000);
+
+    let dest_a = Address::generate(&env); // 80% personal wallet
+    let dest_b = Address::generate(&env); // 20% tax withholding vault
+
     let mut allocs: Vec<SplitAllocation> = Vec::new(&env);
     allocs.push_back(SplitAllocation {
-        destination: dest_a,
+        destination: dest_a.clone(),
         basis_points: 8000,
     });
     allocs.push_back(SplitAllocation {
-        destination: dest_b,
+        destination: dest_b.clone(),
         basis_points: 2000,
     });
 
-    assert_eq!(allocs.len(), 2);
+    let claimed = router_client.split_claim(&stream_contract, &stream_id, &worker, &token, &allocs);
+    assert_eq!(claimed, 50_000_0000000i128);
+
+    let token_client = token::Client::new(&env, &token);
+    assert_eq!(token_client.balance(&dest_a), 40_000_0000000i128);
+    assert_eq!(token_client.balance(&dest_b), 10_000_0000000i128);
 }

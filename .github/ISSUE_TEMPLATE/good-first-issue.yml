@@ -1,0 +1,37 @@
+name: 🌊 Stellar Wave / Good First Issue
+description: Scoped contributor task for the Stellar Drips Wave sprint (100 / 150 / 200 points)
+title: "[Wave]: "
+labels: ["Stellar Wave", "good first issue"]
+body:
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Drips Wave Complexity & Point Tier
+      description: Select the complexity tier for this sprint issue.
+      options:
+        - "Trivial (100 points)"
+        - "Medium (150 points)"
+        - "High (200 points)"
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context & Target Files
+      description: Exact files, modules, or contract functions involved.
+      placeholder: |
+        - `contracts/src/lib.rs`
+        - `backend/src/services/streamStore.ts`
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Verifiable conditions that must pass before the PR can be merged.
+      placeholder: |
+        - [ ] Implementation matches specification with zero mock/hardcoded data
+        - [ ] Unit/integration tests added and passing (`cargo test` / `npm test`)
+        - [ ] Single issue per PR (`Fixes #<issue_number>`)
+    validations:
+      required: true

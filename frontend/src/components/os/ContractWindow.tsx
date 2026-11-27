@@ -1,10 +1,52 @@
 import { useState } from "react";
 import { CopyableAddress } from "../CopyableAddress";
 import { SimulationInspectorModal } from "./SimulationInspectorModal";
+import { buildSep7TxUri } from "../../services/sep7";
+import { simulateStreamFootprint } from "../../services/simulation";
+import {
+  convertBnb18ToStellar7,
+  deriveStxSacAddress,
+  stellarRecipientToBytes32,
+  buildStxTrustlineTxXdr,
+  DEFAULT_STX_ISSUER,
+} from "../../services/stxPegBridge";
 
 export function ContractWindow() {
   const CONTRACT_ID = "CCJW2RLIN4MQQ4DAJMMR3F5QPDA6QYTKXJMEVI3XOTDBTBCLBB553J74";
   const [isSimulationOpen, setIsSimulationOpen] = useState(false);
+  const [bnbStxInput, setBnbStxInput] = useState("250");
+  const [recipientInput, setRecipientInput] = useState(DEFAULT_STX_ISSUER);
+
+  const sep7TxUri = buildSep7TxUri({
+    xdr: simulateStreamFootprint("create_stream").rawXdr,
+    msg: "StellarFlow Soroban Stream Invocation (Testnet)",
+  });
+
+  const safeBnb18 = (() => {
+    const num = Number(bnbStxInput);
+    if (!Number.isFinite(num) || num <= 0) return 100_000_000_000_000_000_000n;
+    return BigInt(Math.round(num * 1e7)) * 100_000_000_000n;
+  })();
+  const pegQuote = convertBnb18ToStellar7(safeBnb18);
+  const stxSacAddress = deriveStxSacAddress(DEFAULT_STX_ISSUER);
+  const bytes32Payload = (() => {
+    try {
+      return stellarRecipientToBytes32(recipientInput);
+    } catch {
+      return stellarRecipientToBytes32(DEFAULT_STX_ISSUER);
+    }
+  })();
+  const trustlineSep7Uri = (() => {
+    try {
+      const txXdr = buildStxTrustlineTxXdr(recipientInput, DEFAULT_STX_ISSUER);
+      return buildSep7TxUri({
+        xdr: txXdr,
+        msg: "Open 1:1 Pegged STX Trustline on Stellar Testnet",
+      });
+    } catch {
+      return sep7TxUri;
+    }
+  })();
 
   return (
     <div className="p-4 sm:p-6 overflow-y-auto max-h-[calc(100vh-180px)] font-mono text-xs sm:text-sm">
@@ -56,11 +98,75 @@ export function ContractWindow() {
               </p>
             </div>
             <a
-              href={`web+stellar:pay?destination=${CONTRACT_ID}&amount=100&asset_code=USDC`}
+              href={sep7TxUri}
               className="py-2 px-3.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-all shadow-[0_0_12px_rgba(59,130,246,0.3)] shrink-0 flex items-center gap-1.5 cursor-pointer text-center justify-center no-underline"
             >
-              <span>Open in Wallet ↗</span>
+              <span>Sign Soroban Tx (SEP-7) ↗</span>
             </a>
+          </div>
+        </div>
+
+        {/* 1:1 BNB Chain (BEP-20) <-> Stellar SAC (STX) Peg Bridge & Trustline Card */}
+        <div className="border_ui rounded-xl p-4 bg-gradient-to-r from-amber-950/30 to-emerald-950/20 border-amber-500/30 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h4 className="font-bold text-amber-400 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                <span>🌉 1:1 BNB Chain (BEP-20) ↔ Stellar SAC (STX) Peg &amp; Stream Bridge</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">
+                  EID 30102 → 40600
+                </span>
+              </h4>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-sans">
+                Converts 18-decimal BNB Smart Chain <code className="text-amber-400">STX</code> (1:1 peg) into 7-decimal Stellar SAC <code className="text-emerald-400">STX</code> with Custom SAC Admin &amp; Locked Issuer (<code className="text-emerald-400">masterWeight=0</code>).
+              </p>
+            </div>
+            <a
+              href={trustlineSep7Uri}
+              className="py-2 px-3.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition-all shrink-0 flex items-center gap-1.5 cursor-pointer text-center justify-center no-underline"
+            >
+              <span>Add STX Trustline ↗</span>
+            </a>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="block text-[10px] uppercase text-gray-400 mb-1">
+                BNB Chain STX Deposit (18 Decimals)
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={bnbStxInput}
+                onChange={(e) => setBnbStxInput(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded bg-black/20 border border-white/10 text-xs font-mono text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase text-gray-400 mb-1">
+                Stellar Recipient Wallet (G... or C...)
+              </label>
+              <input
+                type="text"
+                value={recipientInput}
+                onChange={(e) => setRecipientInput(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded bg-black/20 border border-white/10 text-xs font-mono text-white"
+              />
+            </div>
+          </div>
+
+          <div className="p-2.5 rounded bg-black/30 border border-white/5 text-[11px] space-y-1 font-mono">
+            <div className="flex justify-between">
+              <span className="text-gray-400">1:1 Stellar Credit (7 Dec):</span>
+              <span className="text-emerald-400 font-bold">{pegQuote.formattedStellarStx} STX ({pegQuote.amountStellar7Stroops} stroops)</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Derived STX SAC Contract:</span>
+              <span className="text-purple-400 truncate max-w-[260px]">{stxSacAddress}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">LayerZero/Axelar 32B Payload:</span>
+              <span className="text-cyan-400 truncate max-w-[260px]">{bytes32Payload}</span>
+            </div>
           </div>
         </div>
 
@@ -68,8 +174,8 @@ export function ContractWindow() {
         <div className="border_ui rounded-xl p-4 bg-white/70 dark:bg-[#13151D]/90 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-gray-500 text-xs uppercase tracking-wider font-bold">Deployed Contract Address</span>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-              ● VERIFIED ON TESTNET
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
+              ● TESTNET MVP DEPLOYMENT
             </span>
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-black/5 dark:bg-white/5 rounded-lg border border-black/5 dark:border-white/10">
@@ -132,7 +238,7 @@ export function ContractWindow() {
               </div>
               <div className="flex justify-between py-1">
                 <span className="font-mono text-gray-400">Escrow Security:</span>
-                <span className="font-semibold text-emerald-500">Non-Custodial Instance Storage</span>
+                <span className="font-semibold text-emerald-500">Persistent &amp; Instance Storage (TTL Extended)</span>
               </div>
             </div>
           </div>

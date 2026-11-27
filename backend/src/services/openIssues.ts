@@ -25,7 +25,9 @@ export async function fetchOpenIssues(): Promise<OpenIssue[]> {
 
     const issues = (await response.json()) as any[];
 
-    return issues.map((issue) => {
+    return issues
+      .filter((issue) => !issue.pull_request)
+      .map((issue) => {
       // Basic complexity mapping based on labels, default to "Medium"
       let complexity: OpenIssue["complexity"] = "Medium";
       let points: OpenIssue["points"] = 150;

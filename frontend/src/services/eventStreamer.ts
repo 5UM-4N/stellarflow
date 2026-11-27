@@ -74,9 +74,10 @@ export function normalizeContractEvent(event: SorobanRawEvent): StreamEventSumma
 }
 
 /**
- * Generates sample deterministic Soroban RPC events for offline simulation or testing.
+ * Generates sample deterministic Soroban RPC events for offline unit-test verification.
  */
 export function getSimulatedEvents(contractId = DEFAULT_CONTRACT_ID, limit = 5): StreamEventSummary[] {
+  const sampleAccount = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
   const sampleEvents: SorobanRawEvent[] = [
     {
       type: 'contract',
@@ -88,10 +89,10 @@ export function getSimulatedEvents(contractId = DEFAULT_CONTRACT_ID, limit = 5):
       topic: ['Stream', 'Created'],
       value: {
         stream_id: '101',
-        sender: 'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H',
-        recipient: 'GCKFJND45Z7YTX4R463G4FDFM4WYZ6H435E7DGYDFRUKN3Q6B5L3M7NQ',
+        sender: sampleAccount,
+        recipient: sampleAccount,
         total_amount: '5000.0000000',
-        token: 'CC4R...USDC',
+        token: 'USDC',
       },
     },
     {
@@ -104,7 +105,7 @@ export function getSimulatedEvents(contractId = DEFAULT_CONTRACT_ID, limit = 5):
       topic: ['Stream', 'Claimed'],
       value: {
         stream_id: '101',
-        recipient: 'GCKFJND45Z7YTX4R463G4FDFM4WYZ6H435E7DGYDFRUKN3Q6B5L3M7NQ',
+        recipient: sampleAccount,
         amount: '125.4300000',
       },
     },
@@ -118,7 +119,7 @@ export function getSimulatedEvents(contractId = DEFAULT_CONTRACT_ID, limit = 5):
       topic: ['Stream', 'TopUp'],
       value: {
         stream_id: '101',
-        actor: 'GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H',
+        actor: sampleAccount,
         amount: '2000.0000000',
       },
     },
@@ -129,6 +130,8 @@ export function getSimulatedEvents(contractId = DEFAULT_CONTRACT_ID, limit = 5):
 
 /**
  * Queries live Soroban RPC getEvents endpoint via JSON-RPC 2.0.
+ * If startLedger is omitted, automatically queries getLatestLedger first so the
+ * request stays inside the Soroban RPC 24h–7d ledger retention window.
  */
 export async function fetchLiveEvents(
   contractId = DEFAULT_CONTRACT_ID,
@@ -137,23 +140,43 @@ export async function fetchLiveEvents(
   rpcUrl = TESTNET_RPC_URL,
   fetchImpl: typeof fetch = fetch,
 ): Promise<StreamEventSummary[]> {
-  const payload = {
-    jsonrpc: '2.0',
-    id: 1,
-    method: 'getEvents',
-    params: {
-      startLedger: startLedger || 1000,
-      filters: [
-        {
-          type: 'contract',
-          contractIds: [contractId],
-        },
-      ],
-      limit,
-    },
-  };
-
   try {
+    let resolvedStartLedger = startLedger;
+    if (!resolvedStartLedger) {
+      const latestRes = await fetchImpl(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getLatestLedger',
+        }),
+      });
+      if (latestRes.ok) {
+        const latestData = await latestRes.json();
+        const seq = Number(latestData?.result?.sequence || 0);
+        if (seq > 5000) {
+          resolvedStartLedger = seq - 5000;
+        }
+      }
+    }
+
+    const payload = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'getEvents',
+      params: {
+        startLedger: resolvedStartLedger || 1000,
+        filters: [
+          {
+            type: 'contract',
+            contractIds: [contractId],
+          },
+        ],
+        limit,
+      },
+    };
+
     const response = await fetchImpl(rpcUrl, {
       method: 'POST',
       headers: {
